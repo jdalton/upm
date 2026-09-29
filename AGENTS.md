@@ -34,7 +34,6 @@ as a file of its own, so an app that bundles upm still starts its threads.
 - [.agents/status.md](.agents/status.md) — open gaps, scope limits and work worth exploring.
 - [.agents/design.md](.agents/design.md) — lasting constraints and why they matter.
 - [.agents/maintenance.md](.agents/maintenance.md) — development, validation and doc upkeep.
-- [.agents/perf.md](.agents/perf.md) — how to test a performance idea fairly. Perf PRs
-  lead with premise-frequency counts from real lockfiles (`node bench/premise.ts`)
-  before any benchmark numbers; a repeat pattern that does not occur is a closed idea.
+- [.agents/perf.md](.agents/perf.md) — how to test a performance idea fairly, starting
+  with a premise count from real lockfiles.
 - [bench/README.md](bench/README.md) — benchmark runner and result tools.

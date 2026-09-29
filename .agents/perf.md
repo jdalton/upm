@@ -4,33 +4,17 @@ The goal is less end-to-end work for real installs, not a better isolated counte
 A bottleneck can move after a change. Re-profile instead of treating an old finding
 as a permanent ranking. Open candidates are in [status.md](status.md).
 
-## Prove the premise before the benchmark
+## Count the premise first
 
-Before benchmarking an optimization for repeated work, count how often the repeated
-pattern actually happens in real dependency data — this project's own `upm.lock` first,
-then the lockfiles of the managers being compared. The question is simple: in one real
-run, does the work you want to remove happen once or many times?
-
-A real example shows why the count decides the question. A package manager added a
-cache for a per-package file list, so that installing the same package into several
-folders would read the list once instead of once per folder. Benchmarks on that repeat
-case looked strong. A maintainer then counted the real data: the dependency graph held
-1,264 packages and only 2 shared a file list with another. The repeat case was 0.2
-percent of reality; the cache's extra bookkeeping ran on every install. The change was
-withdrawn.
-
-The same kind of count can also rescue an idea. A second proposal cached manifest
-reads, betting that many edges ask for the same package and version. Counting showed
-55 percent of the lockfile's edges did repeat an earlier ask, so the cache had real
-work to skip and survived.
-
-Use `node bench/premise.ts <lockfile>…` to run both counts: store-entry repeats (same
-tarball integrity placed more than once) and spec-ask repeats (same name and specifier
-requested by more than one edge). It reads upm.lock, vlt-lock.json and npm
-package-lock.json (v2/v3); YAML lockfiles are rejected loudly rather than counted as
-zero. Put the counts in the PR description next to the benchmark numbers, and say
-which row of the benchmark the real frequency exercises. If the repeats do not occur
-in the data, drop the idea no matter how good the isolated percentage looks.
+An optimization for repeated work only pays off if the work repeats in real installs.
+Before any benchmark, run `node bench/premise.ts <lockfile>...` on this project's
+`upm.lock` and on the lockfiles of the compared managers. It counts store-entry repeats
+(one tarball placed more than once) and spec-ask repeats (one name and specifier asked
+by more than one edge); `upm.lock` pins package deps to versions, so its ask count is an
+upper bound. Put the counts in the PR before the benchmark numbers. If the
+pattern does not occur, drop the idea however good the isolated gain looks: its extra
+bookkeeping runs on every install. A store-entry cache once benchmarked well on repeats
+while only 2 of 1,264 packages in the real graph shared an entry.
 
 ## Make the comparison fair
 
@@ -96,9 +80,8 @@ Avoid conclusions from a smaller counter alone:
 
 ## Accept or drop the experiment
 
-Require premise-frequency evidence from real dependency data before benchmarking (see
-"Prove the premise before the benchmark"). Then require a repeatable end-to-end gain on
-the intended workload, equivalent output and no hidden small-install or recovery
+Require a premise count that shows the repeated work exists, a repeatable end-to-end
+gain on the intended workload, equivalent output and no hidden small-install or recovery
 regression. State the CPU/memory tradeoff and which environments were not tested. Keep
 raw results and a runnable method with the change. Do not add complexity for a result
 that cannot be separated from noise.

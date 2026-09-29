@@ -1,180 +1,72 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  premiseFor,
-  premiseInputs,
-  repeatCount,
-  specAskRepeats,
-  storeEntryRepeats,
-} from "../bench/premise.ts";
+import { premise } from "../bench/premise.ts";
 
-describe("repeatCount", () => {
-  it("counts no repeats when every value is distinct", () => {
-    expect(repeatCount(["a", "b", "c"])).toEqual({ distinct: 3, total: 3, repeats: 0 });
-  });
-
-  it("counts one repeat per extra occurrence", () => {
-    expect(repeatCount(["a", "a", "a", "b"])).toEqual({ distinct: 2, total: 4, repeats: 2 });
-  });
-
-  it("is empty on an empty input", () => {
-    expect(repeatCount([])).toEqual({ distinct: 0, total: 0, repeats: 0 });
-  });
+const counts = (total: number, distinct: number) => ({
+  total,
+  distinct,
+  repeats: total - distinct,
 });
 
-describe("premiseInputs", () => {
-  it("counts npm package-lock v3 root devDependencies from the empty key", () => {
-    const inputs = premiseInputs(
+describe("premise", () => {
+  it("reads upm.lock specs for tops and pinned deps for packages", () => {
+    const result = premise(
       JSON.stringify({
+        lockfileVersion: 1,
+        root: {
+          specs: { devDependencies: { a: "^1.0.0" } },
+          dependencies: { a: "1.0.0" },
+        },
+        workspaces: {
+          web: { specs: { dependencies: { a: "^1.0.0" } }, dependencies: { a: "1.0.0" } },
+        },
         packages: {
-          "": { dependencies: { prod: "^1.0.0" }, devDependencies: { types: "^2.0.0" } },
-          "node_modules/prod": { integrity: "sha512-p" },
-          "node_modules/types": { integrity: "sha512-t" },
+          "a@1.0.0": { integrity: "sha512-a", dependencies: { b: "2.0.0" } },
+          "b@2.0.0": { integrity: "sha512-b", devDependencies: { c: "^3.0.0" } },
         },
       }),
     );
-    // prod from root deps, types from root devDeps: both real asks.
-    expect(inputs.asks).toEqual([
-      { name: "prod", spec: "^1.0.0" },
-      { name: "types", spec: "^2.0.0" },
-    ]);
-    expect(inputs.placements.size).toBe(2);
+    expect(result).toEqual({ store: counts(2, 2), asks: counts(3, 2), pinned: true });
   });
 
-  it("does not count a dependency package's own devDependencies", () => {
-    const inputs = premiseInputs(
+  it("reads npm package-lock dev deps only for the root and workspaces", () => {
+    const result = premise(
       JSON.stringify({
+        lockfileVersion: 3,
         packages: {
-          "node_modules/a": {
-            integrity: "sha512-a",
-            devDependencies: { buildtool: "^9.0.0" },
-          },
+          "": { devDependencies: { a: "^1.0.0" } },
+          web: { devDependencies: { a: "^1.0.0" } },
+          "node_modules/web": { link: true },
+          "node_modules/a": { integrity: "sha512-a", devDependencies: { c: "^3.0.0" } },
+          "node_modules/b": { integrity: "sha512-b", dependencies: { a: "^1.0.0" } },
+          "node_modules/b/node_modules/a": { integrity: "sha512-b" },
         },
       }),
     );
-    expect(inputs.asks).toEqual([]);
+    expect(result).toEqual({ store: counts(3, 2), asks: counts(3, 1), pinned: false });
   });
 
-  it("understands the vlt-lock.json node/edge shape", () => {
-    const inputs = premiseInputs(
+  it("reads vlt-lock.json nodes and edges, keeping spaces in a spec", () => {
+    const result = premise(
       JSON.stringify({
         nodes: {
-          "~npm~a@1.0.0": ["npm", "a", "sha512-x", "https://r/a.tgz"],
-          "~npm~b@1.0.0": ["npm", "b", "sha512-x", "https://r/b.tgz"],
+          "~npm~a@1.0.0": [0, "a", "sha512-x"],
+          "~npm~b@1.0.0": [0, "b", "sha512-x"],
+          "file~.": [0, "root"],
         },
         edges: {
-          "file~_d @eslint/js": "dev catalog: ~npm~@eslint+js@9.39.5",
-          "file~app react": "prod ^16.8 ~npm~react@16.8.0",
+          "file~. a": "prod ^1 || ^2 ~npm~a@1.0.0",
+          "~npm~b@1.0.0 a": "prod ^1 ~npm~a@1.0.0",
+          "~npm~c@1.0.0 a": "peer ^1 ~npm~a@1.0.0",
         },
       }),
     );
-    expect(inputs.placements.size).toBe(2);
-    expect(inputs.asks).toEqual([
-      { name: "@eslint/js", spec: "catalog:" },
-      { name: "react", spec: "^16.8" },
-    ]);
+    expect(result).toEqual({ store: counts(2, 1), asks: counts(3, 2), pinned: false });
   });
 
-  it("throws on a YAML lockfile instead of reporting zeros", () => {
-    expect(() => premiseInputs("# yarn lockfile v1\n\nfoo@^1:\n")).toThrow(
-      /unrecognized lockfile shape/,
-    );
-  });
-});
-
-describe("specAskRepeats", () => {
-  it("counts a spec asked by two parents as one repeat", () => {
-    const inputs = premiseInputs(
-      JSON.stringify({
-        root: { dependencies: { shared: "^1.0.0" } },
-        workspaces: {
-          app: { dependencies: { shared: "^1.0.0", other: "^2.0.0" } },
-        },
-        packages: {
-          "other@2.0.0": { dependencies: { shared: "^1.0.0" } },
-        },
-      }),
-    );
-    // shared asked by root, app and other's edge; other asked by app.
-    expect(specAskRepeats(inputs)).toEqual({ distinct: 2, total: 4, repeats: 2 });
-  });
-
-  it("counts an ask repeated across root and lockfile edges", () => {
-    const inputs = premiseInputs(
-      JSON.stringify({
-        packages: {
-          "": { devDependencies: { shared: "^1.0.0" } },
-          "node_modules/a": { dependencies: { shared: "^1.0.0" } },
-        },
-      }),
-    );
-    expect(specAskRepeats(inputs)).toEqual({ distinct: 1, total: 2, repeats: 1 });
-  });
-
-  it("treats different specifiers of one name as different asks", () => {
-    const inputs = premiseInputs(
-      JSON.stringify({
-        root: { dependencies: { shared: "^1.0.0" } },
-        workspaces: { app: { dependencies: { shared: "^2.0.0" } } },
-        packages: {},
-      }),
-    );
-    expect(specAskRepeats(inputs)).toEqual({ distinct: 2, total: 2, repeats: 0 });
-  });
-});
-
-describe("storeEntryRepeats", () => {
-  it("counts duplicate integrities as repeat store placements", () => {
-    const inputs = premiseInputs(
-      JSON.stringify({
-        packages: {
-          "a@1.0.0": { integrity: "sha512-one" },
-          "b@1.0.0": { integrity: "sha512-one" },
-          "c@1.0.0": { integrity: "sha512-two" },
-        },
-      }),
-    );
-    expect(storeEntryRepeats(inputs)).toEqual({ distinct: 2, total: 3, repeats: 1 });
-  });
-
-  it("counts duplicate integrities across npm placements", () => {
-    const inputs = premiseInputs(
-      JSON.stringify({
-        packages: {
-          "node_modules/a": { integrity: "sha512-x" },
-          "node_modules/b": { integrity: "sha512-x" },
-        },
-      }),
-    );
-    expect(storeEntryRepeats(inputs)).toEqual({ distinct: 1, total: 2, repeats: 1 });
-  });
-
-  it("ignores packages without an integrity", () => {
-    const inputs = premiseInputs(
-      JSON.stringify({
-        packages: {
-          "a@1.0.0": { integrity: "sha512-one" },
-          "link@1.0.0": {},
-        },
-      }),
-    );
-    expect(storeEntryRepeats(inputs)).toEqual({ distinct: 1, total: 1, repeats: 0 });
-  });
-});
-
-describe("premiseFor", () => {
-  it("reports both patterns from one document", () => {
-    const premise = premiseFor(
-      JSON.stringify({
-        root: { dependencies: { a: "^1.0.0" } },
-        workspaces: { app: { dependencies: { a: "^1.0.0" } } },
-        packages: {
-          "a@1.0.0": { integrity: "sha512-x" },
-          "b@1.0.0": { integrity: "sha512-x" },
-        },
-      }),
-    );
-    expect(premise.store).toEqual({ distinct: 1, total: 2, repeats: 1 });
-    expect(premise.specs).toEqual({ distinct: 1, total: 2, repeats: 1 });
+  it("rejects YAML and unknown shapes instead of counting zero", () => {
+    for (const text of ["# yarn lockfile v1\n\nfoo@^1:\n", "lockfileVersion: '9.0'\n", "{}"]) {
+      expect(() => premise(text)).toThrow(/not a upm.lock/);
+    }
   });
 });
