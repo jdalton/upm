@@ -3,6 +3,10 @@
 Times cold, warm and repeat installs of one entry package with every supported package
 manager, and records time, peak memory and CPU for each run.
 
+Premise checks come before benchmarks: `node premise.ts <lockfile>…` counts how often
+a repeated-work pattern (store-entry placements, spec asks) occurs in real lockfiles.
+See [../.agents/perf.md](../.agents/perf.md).
+
 ```sh
 ./bench.sh                         # every runner and fixture, then the charts
 ./bench.sh -r upm,pnpm12 -f nuxt   # a subset

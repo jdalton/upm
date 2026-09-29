@@ -4,6 +4,24 @@ The goal is less end-to-end work for real installs, not a better isolated counte
 A bottleneck can move after a change. Re-profile instead of treating an old finding
 as a permanent ranking. Open candidates are in [status.md](status.md).
 
+## Prove the premise before the benchmark
+
+Before benchmarking an optimization for repeated work, count how often the repeated
+pattern actually occurs in real dependency data — the project's own `upm.lock` first,
+then the lockfiles of the managers being compared. A component win on a pattern that
+never repeats is overhead with a percentage attached: vlt's store-index memo looked
+like a large saving until a maintainer counted 1,262 distinct entries in 1,264 nodes
+and showed the repeat path never runs while the added lookup always does. Its sibling
+finding survived the same check because 55% of that lockfile's edges re-ask a
+specifier another edge already asked.
+
+Use `node bench/premise.ts <lockfile>…` for the two patterns this project's findings
+have needed: store-entry repeats (same tarball integrity placed more than once) and
+spec-ask repeats (the same name and specifier requested by more than one edge). Put
+the counts in the PR description next to the benchmark numbers, and say which row of
+the benchmark the real frequency exercises. If the repeats do not occur in the data,
+drop the idea no matter how good the isolated percentage looks.
+
 ## Make the comparison fair
 
 Use [bench/README.md](../bench/README.md) for the suite, the paired A/B runner
@@ -68,7 +86,9 @@ Avoid conclusions from a smaller counter alone:
 
 ## Accept or drop the experiment
 
-Require a repeatable end-to-end gain on the intended workload, equivalent output and
-no hidden small-install or recovery regression. State the CPU/memory tradeoff and
-which environments were not tested. Keep raw results and a runnable method with the
-change. Do not add complexity for a result that cannot be separated from noise.
+Require premise-frequency evidence from real dependency data before benchmarking (see
+"Prove the premise before the benchmark"). Then require a repeatable end-to-end gain on
+the intended workload, equivalent output and no hidden small-install or recovery
+regression. State the CPU/memory tradeoff and which environments were not tested. Keep
+raw results and a runnable method with the change. Do not add complexity for a result
+that cannot be separated from noise.
