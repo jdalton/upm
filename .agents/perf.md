@@ -7,20 +7,30 @@ as a permanent ranking. Open candidates are in [status.md](status.md).
 ## Prove the premise before the benchmark
 
 Before benchmarking an optimization for repeated work, count how often the repeated
-pattern actually occurs in real dependency data — the project's own `upm.lock` first,
-then the lockfiles of the managers being compared. A component win on a pattern that
-never repeats is overhead with a percentage attached: vlt's store-index memo looked
-like a large saving until a maintainer counted 1,262 distinct entries in 1,264 nodes
-and showed the repeat path never runs while the added lookup always does. Its sibling
-finding survived the same check because 55% of that lockfile's edges re-ask a
-specifier another edge already asked.
+pattern actually happens in real dependency data — this project's own `upm.lock` first,
+then the lockfiles of the managers being compared. The question is simple: in one real
+run, does the work you want to remove happen once or many times?
 
-Use `node bench/premise.ts <lockfile>…` for the two patterns this project's findings
-have needed: store-entry repeats (same tarball integrity placed more than once) and
-spec-ask repeats (the same name and specifier requested by more than one edge). Put
-the counts in the PR description next to the benchmark numbers, and say which row of
-the benchmark the real frequency exercises. If the repeats do not occur in the data,
-drop the idea no matter how good the isolated percentage looks.
+A real example shows why the count decides the question. A package manager added a
+cache for a per-package file list, so that installing the same package into several
+folders would read the list once instead of once per folder. Benchmarks on that repeat
+case looked strong. A maintainer then counted the real data: the dependency graph held
+1,264 packages and only 2 shared a file list with another. The repeat case was 0.2
+percent of reality; the cache's extra bookkeeping ran on every install. The change was
+withdrawn.
+
+The same kind of count can also rescue an idea. A second proposal cached manifest
+reads, betting that many edges ask for the same package and version. Counting showed
+55 percent of the lockfile's edges did repeat an earlier ask, so the cache had real
+work to skip and survived.
+
+Use `node bench/premise.ts <lockfile>…` to run both counts: store-entry repeats (same
+tarball integrity placed more than once) and spec-ask repeats (same name and specifier
+requested by more than one edge). It reads upm.lock, vlt-lock.json and npm
+package-lock.json (v2/v3); YAML lockfiles are rejected loudly rather than counted as
+zero. Put the counts in the PR description next to the benchmark numbers, and say
+which row of the benchmark the real frequency exercises. If the repeats do not occur
+in the data, drop the idea no matter how good the isolated percentage looks.
 
 ## Make the comparison fair
 
